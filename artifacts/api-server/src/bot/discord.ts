@@ -225,8 +225,8 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
     qrBuffer = await QRCode.toBuffer(payload, {
       errorCorrectionLevel: "M",
       type: "png",
-      scale: 8,
-      margin: 2,
+      scale: 3,
+      margin: 1,
     });
   } catch (err) {
     logger.error({ err }, "Erro ao gerar QR Code");
@@ -259,13 +259,9 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
   };
 
   await interaction.editReply({
+    content: `**Código Pix (Copia e Cola):**\n\`\`\`\n${payload}\n\`\`\``,
     embeds: [embed],
     files: [attachment],
-  });
-
-  await interaction.followUp({
-    content: `**Código Pix (Copia e Cola):**\n\`\`\`\n${payload}\n\`\`\``,
-    ephemeral: false,
   });
 }
 
