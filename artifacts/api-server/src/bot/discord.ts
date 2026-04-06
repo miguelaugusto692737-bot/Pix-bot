@@ -6,7 +6,6 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AttachmentBuilder,
-  PermissionFlagsBits,
 } from "discord.js";
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
@@ -19,7 +18,7 @@ const DISCORD_TOKEN = process.env["DISCORD_TOKEN"] ?? "";
 const commands = [
   new SlashCommandBuilder()
     .setName("pix")
-    .setDescription("Gera um QR Code e código Pix para receber pagamento")
+    .setDescription("Gera um QR Code e código Pix com a sua chave configurada")
     .addNumberOption((opt) =>
       opt
         .setName("valor")
@@ -38,8 +37,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("configurar-pix")
-    .setDescription("(Somente admin) Configura a chave Pix do servidor")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .setDescription("Configure a sua própria chave Pix para receber pagamentos")
     .addStringOption((opt) =>
       opt
         .setName("chave")
@@ -49,36 +47,31 @@ const commands = [
     .addStringOption((opt) =>
       opt
         .setName("nome")
-        .setDescription("Nome do recebedor (aparece no Pix, máx. 25 caracteres)")
+        .setDescription("Seu nome que aparecerá no Pix (máx. 25 caracteres)")
         .setRequired(true)
         .setMaxLength(25)
     )
     .addStringOption((opt) =>
       opt
         .setName("cidade")
-        .setDescription("Cidade do recebedor (máx. 15 caracteres)")
+        .setDescription("Sua cidade (máx. 15 caracteres, padrão: SAO PAULO)")
         .setRequired(false)
         .setMaxLength(15)
     )
     .toJSON(),
 ];
 
-async function getGuildConfig(guildId: string) {
+async function getUserConfig(userId: string) {
   const rows = await db
     .select()
     .from(pixConfigTable)
-    .where(eq(pixConfigTable.guildId, guildId))
+    .where(eq(pixConfigTable.userId, userId))
     .limit(1);
   return rows[0] ?? null;
 }
 
 async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
-
-  if (!interaction.guildId) {
-    await interaction.editReply("❌ Este comando só pode ser usado dentro de um servidor.");
-    return;
-  }
 
   const chave = interaction.options.getString("chave", true);
   const nome = interaction.options.getString("nome", true);
@@ -87,72 +80,50 @@ async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Pr
   await db
     .insert(pixConfigTable)
     .values({
-      guildId: interaction.guildId,
+      userId: interaction.user.id,
       pixKey: chave,
       recipientName: nome,
       recipientCity: cidade,
-      configuredBy: interaction.user.id,
     })
     .onConflictDoUpdate({
-      target: pixConfigTable.guildId,
+      target: pixConfigTable.userId,
       set: {
         pixKey: chave,
         recipientName: nome,
         recipientCity: cidade,
-        configuredBy: interaction.user.id,
         updatedAt: new Date(),
       },
     });
 
   await interaction.editReply(
-    `✅ Configuração Pix salva com sucesso!\n` +
+    `✅ **Pix configurado com sucesso!**\n\n` +
     `👤 **Nome:** ${nome}\n` +
     `🏙️ **Cidade:** ${cidade}\n` +
     `🔑 **Chave:** \`${chave}\`\n\n` +
-    `_Apenas você está vendo esta mensagem._`
+    `_Agora use \`/pix\` para gerar suas cobranças. Apenas você está vendo esta mensagem._`
   );
 }
 
 async function handlePix(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
 
-  const guildId = interaction.guildId;
-  let pixKey: string;
-  let pixName: string;
-  let pixCity: string;
+  const config = await getUserConfig(interaction.user.id);
 
-  if (guildId) {
-    const config = await getGuildConfig(guildId);
-    if (!config) {
-      await interaction.editReply(
-        "⚠️ Nenhuma chave Pix configurada neste servidor.\n" +
-        "Um administrador deve usar o comando `/configurar-pix` primeiro."
-      );
-      return;
-    }
-    pixKey = config.pixKey;
-    pixName = config.recipientName;
-    pixCity = config.recipientCity;
-  } else {
-    pixKey = process.env["PIX_KEY"] ?? "";
-    pixName = process.env["PIX_RECIPIENT_NAME"] ?? "Destinatario";
-    pixCity = process.env["PIX_RECIPIENT_CITY"] ?? "SAO PAULO";
-    if (!pixKey || pixKey === "SUA_CHAVE_PIX_AQUI") {
-      await interaction.editReply(
-        "⚠️ Nenhuma chave Pix configurada.\n" +
-        "Use o comando `/configurar-pix` para configurar."
-      );
-      return;
-    }
+  if (!config) {
+    await interaction.editReply(
+      `⚠️ Você ainda não configurou sua chave Pix.\n` +
+      `Use o comando \`/configurar-pix\` para configurar a sua chave e começar a receber pagamentos.`
+    );
+    return;
   }
 
   const amount = interaction.options.getNumber("valor") ?? undefined;
   const description = interaction.options.getString("descricao") ?? undefined;
 
   const payload = generatePixPayload({
-    key: pixKey,
-    name: pixName,
-    city: pixCity,
+    key: config.pixKey,
+    name: config.recipientName,
+    city: config.recipientCity,
     amount,
     description,
   });
@@ -179,7 +150,7 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
 
   const fields: { name: string; value: string; inline: boolean }[] = [
     { name: "💰 Valor", value: valorStr, inline: true },
-    { name: "👤 Recebedor", value: pixName, inline: true },
+    { name: "👤 Recebedor", value: config.recipientName, inline: true },
   ];
 
   if (description) {
@@ -189,7 +160,7 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
   const embed = {
     color: 0x32bcad,
     title: "🟢 Cobrança Pix",
-    description: "Escaneie o QR Code com qualquer banco (Nubank, Inter, Itaú, etc.) ou copie o código abaixo.",
+    description: `Cobrança gerada por <@${interaction.user.id}>. Escaneie o QR Code com qualquer banco ou copie o código abaixo.`,
     fields,
     image: { url: "attachment://pix-qrcode.png" },
     footer: { text: "Pix — Disponível 24h em todos os bancos" },
