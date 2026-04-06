@@ -6,6 +6,7 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AttachmentBuilder,
+  PermissionFlagsBits,
 } from "discord.js";
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
@@ -37,7 +38,8 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("configurar-pix")
-    .setDescription("Configure a sua própria chave Pix para receber pagamentos")
+    .setDescription("(Somente admin) Configure sua chave Pix para receber pagamentos")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt
         .setName("chave")
