@@ -24,15 +24,15 @@ const commands = [
     .addNumberOption((opt) =>
       opt
         .setName("valor")
-        .setDescription("Valor em reais (ex: 29.90). Deixe vazio para valor livre.")
-        .setRequired(false)
+        .setDescription("Valor em reais (ex: 29.90)")
+        .setRequired(true)
         .setMinValue(0.01)
     )
     .addStringOption((opt) =>
       opt
         .setName("descricao")
-        .setDescription("Descrição do pagamento (opcional)")
-        .setRequired(false)
+        .setDescription("Descrição do pagamento")
+        .setRequired(true)
         .setMaxLength(72)
     )
     .toJSON(),
@@ -209,8 +209,8 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
     return;
   }
 
-  const amount = interaction.options.getNumber("valor") ?? undefined;
-  const description = interaction.options.getString("descricao") ?? undefined;
+  const amount = interaction.options.getNumber("valor", true);
+  const description = interaction.options.getString("descricao", true);
 
   const payload = generatePixPayload({
     key: config.pixKey,
@@ -236,18 +236,13 @@ async function handlePix(interaction: ChatInputCommandInteraction): Promise<void
 
   const attachment = new AttachmentBuilder(qrBuffer, { name: "pix-qrcode.png" });
 
-  const valorStr = amount !== undefined
-    ? `R$ ${amount.toFixed(2).replace(".", ",")}`
-    : "Valor livre";
+  const valorStr = `R$ ${amount.toFixed(2).replace(".", ",")}`;
 
   const fields: { name: string; value: string; inline: boolean }[] = [
     { name: "💰 Valor", value: valorStr, inline: true },
     { name: "👤 Recebedor", value: config.recipientName, inline: true },
+    { name: "📝 Descrição", value: description, inline: false },
   ];
-
-  if (description) {
-    fields.push({ name: "📝 Descrição", value: description, inline: false });
-  }
 
   const embed = {
     color: 0x32bcad,
