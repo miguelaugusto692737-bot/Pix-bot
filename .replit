@@ -24,3 +24,10 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+PIX_RECIPIENT_NAME = "Joao"
+PIX_RECIPIENT_CITY = "SAO PAULO"
+PIX_KEY = "SUA_CHAVE_PIX_AQUI"
