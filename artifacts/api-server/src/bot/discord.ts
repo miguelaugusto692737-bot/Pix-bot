@@ -7,10 +7,11 @@ import {
   ChatInputCommandInteraction,
   AttachmentBuilder,
   PermissionFlagsBits,
+  GuildMember,
 } from "discord.js";
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
-import { db, pixConfigTable } from "@workspace/db";
+import { db, pixConfigTable, guildConfigTable } from "@workspace/db";
 import { generatePixPayload } from "./pix.js";
 import { logger } from "../lib/logger.js";
 
@@ -38,7 +39,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("configurar-pix")
-    .setDescription("(Somente admin) Configure sua chave Pix para receber pagamentos")
+    .setDescription("Configure sua chave Pix para receber pagamentos")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt
@@ -61,7 +62,28 @@ const commands = [
         .setMaxLength(15)
     )
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("configurar-cargo")
+    .setDescription("(Somente admin) Define qual cargo pode usar /pix e /configurar-pix")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addRoleOption((opt) =>
+      opt
+        .setName("cargo")
+        .setDescription("Cargo autorizado a usar os comandos Pix")
+        .setRequired(true)
+    )
+    .toJSON(),
 ];
+
+async function getGuildConfig(guildId: string) {
+  const rows = await db
+    .select()
+    .from(guildConfigTable)
+    .where(eq(guildConfigTable.guildId, guildId))
+    .limit(1);
+  return rows[0] ?? null;
+}
 
 async function getUserConfig(userId: string) {
   const rows = await db
@@ -72,8 +94,66 @@ async function getUserConfig(userId: string) {
   return rows[0] ?? null;
 }
 
+async function isAuthorized(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  const member = interaction.member;
+  if (!member || !(member instanceof GuildMember)) return false;
+
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+
+  const guildId = interaction.guildId;
+  if (!guildId) return false;
+
+  const guildConfig = await getGuildConfig(guildId);
+  if (!guildConfig) return false;
+
+  return member.roles.cache.has(guildConfig.allowedRoleId);
+}
+
+async function handleConfigurarCargo(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
+
+  if (!interaction.guildId) {
+    await interaction.editReply("❌ Este comando só pode ser usado dentro de um servidor.");
+    return;
+  }
+
+  const role = interaction.options.getRole("cargo", true);
+
+  await db
+    .insert(guildConfigTable)
+    .values({
+      guildId: interaction.guildId,
+      allowedRoleId: role.id,
+      configuredBy: interaction.user.id,
+    })
+    .onConflictDoUpdate({
+      target: guildConfigTable.guildId,
+      set: {
+        allowedRoleId: role.id,
+        configuredBy: interaction.user.id,
+        updatedAt: new Date(),
+      },
+    });
+
+  await interaction.editReply(
+    `✅ **Cargo configurado!**\n\n` +
+    `O cargo <@&${role.id}> agora pode usar os comandos \`/pix\` e \`/configurar-pix\`.\n` +
+    `Membros sem esse cargo e sem ser administrador não terão acesso.\n\n` +
+    `_Apenas você está vendo esta mensagem._`
+  );
+}
+
 async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
+
+  const authorized = await isAuthorized(interaction);
+  if (!authorized) {
+    await interaction.editReply(
+      "🚫 Você não tem permissão para usar este comando.\n" +
+      "Apenas administradores ou membros com o cargo autorizado podem configurar o Pix."
+    );
+    return;
+  }
 
   const chave = interaction.options.getString("chave", true);
   const nome = interaction.options.getString("nome", true);
@@ -107,7 +187,17 @@ async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Pr
 }
 
 async function handlePix(interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.deferReply();
+  await interaction.deferReply({ ephemeral: false });
+
+  const authorized = await isAuthorized(interaction);
+  if (!authorized) {
+    await interaction.editReply({
+      content:
+        "🚫 Você não tem permissão para usar este comando.\n" +
+        "Apenas administradores ou membros com o cargo autorizado podem usar o Pix.",
+    });
+    return;
+  }
 
   const config = await getUserConfig(interaction.user.id);
 
@@ -208,6 +298,10 @@ export async function startDiscordBot(): Promise<void> {
     } else if (interaction.commandName === "configurar-pix") {
       await handleConfigurarPix(interaction).catch((err) => {
         logger.error({ err }, "Erro ao processar comando /configurar-pix");
+      });
+    } else if (interaction.commandName === "configurar-cargo") {
+      await handleConfigurarCargo(interaction).catch((err) => {
+        logger.error({ err }, "Erro ao processar comando /configurar-cargo");
       });
     }
   });
