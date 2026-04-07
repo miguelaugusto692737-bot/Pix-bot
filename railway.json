@@ -1,14 +1,10 @@
 {
-  "installCommand": "pnpm install --no-frozen-lockfile",
-  "buildCommand": "pnpm run build",
-  "startCommand": "pnpm run start"
-}
-{
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "cd artifacts/api-server && pnpm install && pnpm build"
   },
   "deploy": {
-    "startCommand": "pnpm start"
+    "startCommand": "cd artifacts/api-server && pnpm start"
   }
 }
