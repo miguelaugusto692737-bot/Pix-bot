@@ -24,8 +24,12 @@ const server = app.listen(port, () => {
   logger.info({ port }, "Server listening");
 });
 
-server.on("error", (err) => {
-  logger.error({ err }, "Error listening on port");
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE") {
+    logger.error({ port }, `Porta ${port} já está em uso. Encerrando.`);
+  } else {
+    logger.error({ err }, "Erro ao iniciar o servidor");
+  }
   process.exit(1);
 });
 
