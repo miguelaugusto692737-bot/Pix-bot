@@ -2,6 +2,10 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startDiscordBot } from "./bot/discord.js";
 
+app.get("/", (req, res) => {
+  res.send("Bot online!");
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
