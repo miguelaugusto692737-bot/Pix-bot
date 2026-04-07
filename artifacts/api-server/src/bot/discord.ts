@@ -12,7 +12,7 @@ import {
 import QRCode from "qrcode";
 import { eq } from "drizzle-orm";
 import { db, pixConfigTable, guildConfigTable } from "@workspace/db";
-import { generatePixPayload } from "./pix.js";
+import { generatePixPayload, normalizePixKey } from "./pix.js";
 import { logger } from "../lib/logger.js";
 
 const DISCORD_TOKEN = process.env["DISCORD_TOKEN"] ?? "";
@@ -155,7 +155,8 @@ async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Pr
     return;
   }
 
-  const chave = interaction.options.getString("chave", true);
+  const chaveRaw = interaction.options.getString("chave", true);
+  const chave = normalizePixKey(chaveRaw);
   const nome = interaction.options.getString("nome", true);
   const cidade = interaction.options.getString("cidade") ?? "SAO PAULO";
 
@@ -177,11 +178,24 @@ async function handleConfigurarPix(interaction: ChatInputCommandInteraction): Pr
       },
     });
 
+  const tipoChave = chave.includes("@")
+    ? "E-mail"
+    : chave.startsWith("+")
+    ? "Telefone"
+    : /^[0-9a-f]{8}-/.test(chave)
+    ? "Chave aleatória (EVP)"
+    : chave.length === 11
+    ? "CPF"
+    : chave.length === 14
+    ? "CNPJ"
+    : "Chave Pix";
+
   await interaction.editReply(
     `✅ **Pix configurado com sucesso!**\n\n` +
     `👤 **Nome:** ${nome}\n` +
     `🏙️ **Cidade:** ${cidade}\n` +
-    `🔑 **Chave:** \`${chave}\`\n\n` +
+    `🔑 **Tipo:** ${tipoChave}\n` +
+    `🔑 **Chave (normalizada):** \`${chave}\`\n\n` +
     `_Agora use \`/pix\` para gerar suas cobranças. Apenas você está vendo esta mensagem._`
   );
 }
