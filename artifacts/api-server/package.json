@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "fuser -k ${PORT:-8080}/tcp 2>/dev/null || true; export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "npx tsc",
-    "start": "node ./build.mjs && node --enable-source-maps ./dist/index.mjs"
+    "start": "node ./build.mjs && node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -28,7 +28,7 @@
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13",
-    "thread-stream": "3.1.0"
+    "thread-stream": "3.1.0",
     "typescript": "^5.0.0"
   }
 }
